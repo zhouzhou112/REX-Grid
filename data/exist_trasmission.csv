@@ -1,0 +1,11 @@
+﻿from,to,capacity_GW,name,status,path,type,LEVEL,distance(km)
+53,44,5,Yunnan-Guangdong,Operating,53→44,DC,±800kV,1100
+53,44,5,Nuozhadu-Guangdong,Operating,53→44,DC,±800kV,1100
+53,44,5,Dianxibei-Guangdong,Operating,53→44,DC,±800kV,1100
+53,45,8,Kunliulong,Construction,53→45,DC,±800kV,600
+53,45,2.5,Yunnan-Guangxi,Operating,53→45,AC,500kV,600
+53,52,2.5,Yunnan-Guizhou,Operating,53→52,AC,500kV,435
+45,44,8,Kunliulong,Construction,45→44,DC,±800kV,500
+44,46,1.2,Guangdong-Hainan,Operating,44→46,AC,500kV,460
+52,44,3,Guizhou-Guangdong,Operating,52→44,AC,500kV,500
+52,45,2.5,Guizhou-Guangxi,Operating,52→45,AC,500kV,450

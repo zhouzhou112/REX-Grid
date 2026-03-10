@@ -1,0 +1,31 @@
+# ==========================================
+# REX-Grid Environment Requirements
+# Target Python Version: 3.10
+# ==========================================
+
+# --- Data Processing & Math ---
+numpy==2.4.3
+pandas==3.0.1
+scipy==1.17.1
+openpyxl>=3.0.0
+
+# --- NetCDF & Geospatial ---
+xarray==2025.1.2
+geopandas==1.1.0
+
+# --- Machine Learning & Clustering ---
+scikit-learn-extra==0.3.0
+joblib==1.4.2
+
+# --- Reinforcement Learning & Deep Learning ---
+gymnasium==1.1.1
+stable-baselines3==2.6.0
+torch>=2.0.0
+tensorboard>=2.14.0
+
+# --- Optimization & Dispatch ---
+gurobipy==12.0.1
+
+# --- Utilities ---
+networkx==3.3
+tqdm==4.67.1
