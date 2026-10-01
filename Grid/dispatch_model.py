@@ -133,7 +133,6 @@ def cref_hvac_500kv(distance_km: float) -> float:
 
 def load_existing_lines(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
-    # Only 'Operating' records enter the base-year capacity; the 'Construction' records (Kunliulong) are not included. See PROVENANCE.md, Known issue 2.
     df = df[df["status"].isin(["Operating", "Construct"]) ]
     rec = []
     for _, r in df.iterrows():
@@ -437,7 +436,6 @@ class AnnualDispatchOptimizer:
 
             cap_MW = self.cap_corr[j] * 1000
             line_capex_kUSD = TECH_INFO[tech]["capex"] * 1000 * dist * (cap_MW / cref)
-            # Kept as in the runs reported in the paper (thousand-USD slip); see PROVENANCE.md, Known issue 1.
             sub_capex_both_kUSD = TECH_INFO[tech]["substation"] * cap_MW * 2
             self.cost_terms["line_fix_OM"] += (
                                                           FOM_LINE_RATE * line_capex_kUSD + FOM_SUB_RATE * sub_capex_both_kUSD) * year_scale

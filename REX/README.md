@@ -12,6 +12,5 @@ python -m REX.train_ppo_gd --province 44 --config REX/configs/ppo_table_S23.json
 ```
 
 Add `--check-config` to validate configuration without training or loading weather.
-The LCO and GRD baseline sources are in `RL_main/`; their model expressions are
-retained and their paths adapted for this repository. See the
+See the
 [main README](../README.md) for data requirements and the scientific description.

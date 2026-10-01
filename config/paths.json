@@ -16,6 +16,5 @@
   "hydro_cf": "data/Hydro-cf.csv",
   "installed_cap": "data/Generate_installed_2020.csv",
   "hydro_coeff": "data/hydro_factor.xlsx",
-  "nuclear_coeff": "data/nuclear_factor.xlsx",
-  "baseline_comparison_portfolio": "data/optional/comparison_portfolio.xlsx"
+  "nuclear_coeff": "data/nuclear_factor.xlsx"
 }

@@ -15,5 +15,4 @@ Run from the repository root:
 This entry retains the M demand pathway. Paths are in `config/paths.json`.
 Hourly weather files must be provided before evaluating a case.
 
-See the [main README](../README.md) for units and assumptions, and
-[PROVENANCE.md](PROVENANCE.md) for equivalence checks and the retained known issues.
+See the [main README](../README.md) for units and assumptions.

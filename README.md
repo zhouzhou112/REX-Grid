@@ -73,14 +73,13 @@ All three strategies add the same wind–PV capacity.
 
 ```text
 REX/        Stage 1 environment, reward, wind/PV generation models and PPO training
-RL_main/    LCO and GRD baseline functions
 Grid/       Stage 2 PSTE model (dispatch_model.py), stage loop (main_multiyear.py),
             representative-day selection, intra-provincial network and portfolio loader
 config/     paths.json: all input and output paths, relative to the repository root
 data/       model inputs and the siting portfolios used in the paper (data/expansion/{RL,LCOE,Greedy}/)
 ```
 
-`Grid/` is a cleaned implementation of the PSTE code used for the paper. `Grid/PROVENANCE.md` summarizes the model-level equivalence check and the known issues.
+`Grid/` is a cleaned implementation of the PSTE code used for the paper.
 
 ---
 
@@ -107,8 +106,6 @@ python -m Grid.main_multiyear --mode RL --carbon CN2050
 ```
 
 The Stage 2 entry currently exposes the M demand pathway (the retained 4% then 2% annual load-growth implementation). Use `--help` to inspect available options. `python -m REX.train_ppo_gd --check-config` validates the configuration without training or loading weather.
-
-The baseline functions are supplied in `RL_main/`. The legacy GRD example additionally reads an optional comparison portfolio configured by `baseline_comparison_portfolio`; provide that file before running its diagnostic comparison.
 
 **Outputs:**
 - `multi_year_dispatch_results.xlsx`: hourly dispatch by stage;
