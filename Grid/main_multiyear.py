@@ -12,14 +12,15 @@ import pandas as pd
 import gurobipy as gp
 from pathlib import Path
 
-from utils_yearly import read_table, load_decision_points_for_year
-from utils_intra import build_county_ts, plan_intra_transmission_v1, aggregate_to_city, load_intra_network_state, \
+from Grid.utils_yearly import read_table, load_decision_points_for_year
+from Grid.utils_intra import build_county_ts, plan_intra_transmission_v1, aggregate_to_city, load_intra_network_state, \
     dump_intra_network_state
-from dispatch_model import initialize_annual_inputs, AnnualDispatchOptimizer, THERMAL_PARAMS, STORAGE_TECHS, \
+from Grid.dispatch_model import initialize_annual_inputs, AnnualDispatchOptimizer, THERMAL_PARAMS, STORAGE_TECHS, \
     extract_results
 # --- 跨文件夹导入 REX 模块 (将 env 改为 REX) ---
 from REX.compute_power_gap import compute_gap
-import dispatch_model as dm
+import Grid.dispatch_model as dm
+from config.paths import input_path
 
 SOUTH_IDS = [44, 45, 46, 52, 53]
 THERMAL_TYPES = ["Coal_300to600", "Coal_lessthan300", "Coal_morethan600", "GAS"]
@@ -33,19 +34,19 @@ def run_case(expansion_mode: str, carbon_scenario: str):
     """
     dm.CARBON_SCENARIO = carbon_scenario
     tag = f"{expansion_mode}_{carbon_scenario}".replace(".", "")
-    out_dir = Path(r"D:\paper2\绘图\调度情景\0918补充\增速4") / tag
+    out_dir = input_path("output_dir") / tag
     out_dir.mkdir(parents=True, exist_ok=True)
 
     YEARS = list(range(2020, 2051, 5))
-    DISCOUNT_RATE = 0.05
+    DISCOUNT_RATE = 0.07
 
     # 路径配置
-    thermal_csv_path = r"D:/paper2/data/Power_generate/火电/全国分级火电分布.csv"
-    storage_excel_path = r"D:/paper2/data/Power_generate/energy_story_2020.xlsx"
-    transmission_csv_path = r"D:\paper2\data\Power_generate\跨省传输线路\exist_trasmission.csv"
-    nation_base_path = r"D:/paper2/data/resourcepoint/05已安装风光数据链接/RL_STATE_2020.xlsx"
-    RETIRE_XLSX = r"D:\paper2\data\Power_generate\火电\retirement_capacity_bins.xlsx"
-    city_center_path = r'D:\paper2\data\Power_generate\省内能源传输\city-center-0816.xls'
+    thermal_csv_path = input_path("thermal_csv")
+    storage_excel_path = input_path("storage_xlsx")
+    transmission_csv_path = input_path("transmission_csv")
+    nation_base_path = input_path("decision_points")
+    RETIRE_XLSX = input_path("retirement_xlsx")
+    city_center_path = input_path("city_centers")
 
     nation_base = read_table(nation_base_path, id_col="point_id")
 
@@ -82,7 +83,7 @@ def run_case(expansion_mode: str, carbon_scenario: str):
         city_ts, city_meta = aggregate_to_city(county_ts, ts_df)
         spur_dict, trunk_dict, intra_cost, _, _ = plan_intra_transmission_v1(
             county_ts, city_ts, city_meta, ts_df, spur_prev=spur_dict, trunk_prev=trunk_dict,
-            network_path="city_network-0816"
+            network_path=input_path("city_network")
         )
 
         data_year = initialize_annual_inputs(
@@ -104,7 +105,10 @@ def run_case(expansion_mode: str, carbon_scenario: str):
         mand_ret = {u: np.zeros(len(SOUTH_IDS)) for u in THERMAL_TYPES}
         for idx, prov in enumerate(SOUTH_IDS):
             for u in THERMAL_TYPES:
-                mand_ret[u][idx] = max(official_req[u][prov] - ret_credit[u][prov], 0.0)
+                need_after_credit = max(official_req[u][prov] - ret_credit[u][prov], 0.0)
+                if need_after_credit < 1e-5:
+                    need_after_credit = 0.0
+                mand_ret[u][idx] = need_after_credit
 
         # 调度求解
         opt = AnnualDispatchOptimizer(data_year, current_year=yr, threads=22, mandatory_retire=mand_ret)
@@ -113,8 +117,8 @@ def run_case(expansion_mode: str, carbon_scenario: str):
 
         if status in (gp.GRB.OPTIMAL, gp.GRB.SUBOPTIMAL) and opt.m.SolCount > 0:
             best_obj = opt.m.ObjVal
-            npv_total += (1 / (1 + DISCOUNT_RATE) ** k) * best_obj
-            print(f"[{yr}] Optimal  Obj={best_obj:,.0f}  累计NPV={npv_total:,.0f} k RMB")
+            npv_total += (1 / (1 + DISCOUNT_RATE) ** (5 * k)) * best_obj
+            print(f"[{yr}] Optimal  Obj={best_obj:,.0f}  累计NPV={npv_total:,.0f} USD (2020)")
             cost_series = opt.get_cost_report()
         else:
             print(f"[{yr}] 模型无可行解 (status={status})，执行 IIS…")
@@ -130,6 +134,7 @@ def run_case(expansion_mode: str, carbon_scenario: str):
 
         year_res = extract_results(opt)
         year_res["year"] = yr
+        year_res["optimizer"] = opt
         results_list.append(year_res)
 
         # 更新基线
@@ -256,7 +261,9 @@ def run_case(expansion_mode: str, carbon_scenario: str):
 
 
 if __name__ == "__main__":
-    for mode in ["RL", "Greedy", "LCOE"]:
-        for scen in ["CN2050", "GM2.0", "NDC"]:
-            print(f"\n\n===== Start Case: {mode} / {scen} =====")
-            run_case(mode, scen)
+    import argparse
+    parser = argparse.ArgumentParser(description="Evaluate one siting strategy under the M demand pathway.")
+    parser.add_argument("--mode", choices=["RL", "Greedy", "LCOE"], default="RL")
+    parser.add_argument("--carbon", choices=["CN2050", "GM2.0", "NDC"], default="CN2050")
+    args = parser.parse_args()
+    run_case(args.mode, args.carbon)

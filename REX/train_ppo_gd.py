@@ -1,4 +1,14 @@
 import os
+import sys
+import json
+import argparse
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "REX"))
+from config.paths import input_path
+from torch import nn
 import multiprocessing as mp
 import numpy as np
 from stable_baselines3 import PPO
@@ -76,93 +86,66 @@ class SaveVecNormalizeCallback(BaseCallback):
         return True
 
 
+class EntropyScheduleCallback(BaseCallback):
+    """Scale the entropy coefficient with the configured learning rate."""
+    def __init__(self, initial_entropy, initial_lr):
+        super().__init__()
+        self.initial_entropy, self.initial_lr = initial_entropy, initial_lr
+
+    def _on_step(self):
+        return True
+
+    def _on_rollout_end(self):
+        progress = self.model._current_progress_remaining
+        self.model.ent_coef = self.initial_entropy * self.model.lr_schedule(progress) / self.initial_lr
+
+
 def main():
-    # 文件路径 (只保留装机潜能的数据)
-    decision_points_excel = r"D:\paper2\data\resourcepoint\05已安装风光数据链接\RL_STATE_2020.xlsx"
-    log_dir = "./logs/"
-    os.makedirs(log_dir, exist_ok=True)
-
-    if os.name == "nt":  # Windows 必须 spawn
+    parser = argparse.ArgumentParser(description="Train a provincial PPO agent using SI Table S23.")
+    parser.add_argument("--province", type=int, choices=[44, 45, 46, 52, 53], default=44)
+    parser.add_argument("--config", type=Path, default=ROOT / "REX/configs/ppo_table_S23.json")
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--check-config", action="store_true", help="Validate configuration without training or loading weather.")
+    args = parser.parse_args()
+    cfg = json.loads(args.config.read_text(encoding="utf-8"))
+    assert cfg["n_envs"] * cfg["n_steps"] % cfg["batch_size"] == 0
+    if args.check_config:
+        print(json.dumps(cfg, indent=2))
+        return
+    log_dir = input_path("output_dir") / "training" / str(args.province)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
         mp.set_start_method("spawn", force=True)
-
-    # 1) 训练用并行环境 (32 进程)
-    env_fns = [
-        make_dispatch_env(
-            province_id=44,
-            rank=i,
-            decision_points_excel=decision_points_excel,
-            start_year=2020,
-            terminal_year=2050,
-            log_dir=log_dir,
-        )
-        for i in range(32)
-    ]
-    venv = SubprocVecEnv(env_fns, start_method="spawn")
-
-    # 注意：如果是首次训练，请使用 VecNormalize(venv, ...)，如果有预训练权重，用 .load
+    env_fns = [make_dispatch_env(args.province, i, str(input_path("decision_points")),
+                                cfg["start_year"], cfg["terminal_year"], str(log_dir))
+               for i in range(cfg["n_envs"])]
+    venv = VecNormalize(SubprocVecEnv(env_fns, start_method="spawn"), norm_obs=True, norm_reward=True, clip_obs=10.)
+    eval_raw = make_dispatch_env(args.province, 999, str(input_path("decision_points")),
+                                 cfg["start_year"], cfg["terminal_year"], str(log_dir))()
+    eval_env = VecNormalize(DummyVecEnv([lambda: eval_raw]), training=False,
+                            norm_obs=True, norm_reward=True, clip_obs=10.)
+    eval_env.obs_rms, eval_env.ret_rms = venv.obs_rms, venv.ret_rms
     try:
-        venv = VecNormalize.load("logs/vecnorm-ppo-0528.pkl", venv)
-        print("已加载历史 VecNormalize 模型。")
-    except FileNotFoundError:
-        print("未找到历史 VecNormalize，初始化全新归一化层。")
-        venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.)
-
-    # 2) 评估用串行环境
-    eval_env_raw = make_dispatch_env(
-        44, 999, decision_points_excel, 2020, 2050, log_dir
-    )()
-    eval_env = DummyVecEnv([lambda: eval_env_raw])
-    eval_env = VecNormalize(eval_env, training=False, norm_obs=True, norm_reward=True, clip_obs=10.)
-    eval_env.obs_rms = venv.obs_rms
-    eval_env.ret_rms = venv.ret_rms
-
-    # 3) 回调函数配置
-    custom_callback = CustomLoggingCallback(verbose=1)
-    eval_callback = EvalCallback(
-        eval_env, best_model_save_path=log_dir, log_path=log_dir,
-        eval_freq=5000, n_eval_episodes=1, deterministic=True
-    )
-    checkpoint_callback = CheckpointCallback(save_freq=10000, save_path=log_dir, name_prefix="ppo_GD")
-    vec_cb = SaveVecNormalizeCallback(venv, save_freq=10000, save_path=log_dir)
-
-    # 4) 模型加载与训练
-    try:
-        model = PPO.load(
-            "./logs/ppo_GD_60_800000_steps.zip",
-            env=venv,
-            device="cuda",
-            custom_objects={
-                "learning_rate": linear_schedule(2e-5, 1e-6),
-                "clip_range": linear_schedule(0.06, 0.02),
-                "ent_coef": 0.001,
-                "target_kl": 0.03,
-                "n_steps": 64,  # 注意此处修改：之前参数里写了32，custom_objects里写了64，我给你统合到了这里
-                "vf_coef": 0.4,
-            },
-            print_system_info=True,
-        )
-        print("已加载历史 PPO 模型进行继续训练。")
-    except FileNotFoundError:
-        print("未找到历史 PPO 模型，初始化全新 PPO 实例。")
-        model = PPO(
-            "MlpPolicy", venv, n_steps=64, batch_size=128,
-            learning_rate=linear_schedule(2e-5, 1e-6), clip_range=linear_schedule(0.06, 0.02),
-            ent_coef=0.001, target_kl=0.03, vf_coef=0.4, device="cuda", verbose=1
-        )
-
-    # 训练执行
-    total_timesteps = 2_500_000
-    model.learn(
-        total_timesteps=total_timesteps,
-        callback=[custom_callback, eval_callback, checkpoint_callback, vec_cb],
-        log_interval=1,
-        reset_num_timesteps=False,
-        tb_log_name="PPO_GD-Run"
-    )
-
-    model.save("./model/ppo_dispatch_bridge_final")
-    venv.save("logs/vecnorm-ppo-latest.pkl")
-    print("PPO 训练圆满结束。")
+        model = PPO("MlpPolicy", venv, n_steps=cfg["n_steps"], batch_size=cfg["batch_size"],
+                    n_epochs=cfg["n_epochs"], gamma=cfg["gamma"], gae_lambda=cfg["gae_lambda"],
+                    learning_rate=linear_schedule(*cfg["learning_rate"]),
+                    clip_range=linear_schedule(*cfg["clip_range"]),
+                    ent_coef=cfg["ent_coef"], target_kl=cfg["target_kl"], vf_coef=cfg["vf_coef"],
+                    policy_kwargs={"activation_fn": nn.ReLU,
+                                   "net_arch": {"pi": cfg["policy_layers"], "vf": cfg["value_layers"]}},
+                    device=args.device, verbose=1, tensorboard_log=str(log_dir))
+        callbacks = [CustomLoggingCallback(verbose=1),
+                     EvalCallback(eval_env, best_model_save_path=str(log_dir), log_path=str(log_dir),
+                                  eval_freq=5000, n_eval_episodes=1, deterministic=True),
+                     CheckpointCallback(save_freq=10000, save_path=str(log_dir), name_prefix="ppo"),
+                     SaveVecNormalizeCallback(venv, save_freq=10000, save_path=str(log_dir)),
+                     EntropyScheduleCallback(cfg["ent_coef"], cfg["learning_rate"][0])]
+        model.learn(total_timesteps=cfg["total_timesteps"], callback=callbacks, log_interval=1)
+        model.save(str(log_dir / "ppo_final"))
+        venv.save(str(log_dir / "vecnormalize_final.pkl"))
+    finally:
+        eval_env.close()
+        venv.close()
 
 
 if __name__ == "__main__":

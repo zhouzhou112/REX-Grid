@@ -30,16 +30,16 @@ def _compute_monthly_CI(calculator: PowerGapCalculator, year: int, month: int,
     var_l = np.nanvar(load_arr, axis=0)
     var_lws = np.nanvar(load_arr - wind_solar_sum, axis=0)
 
-    # CI1
+    # CI1 = C_var in the paper.
     sum_var = var_w + var_s + 1e-6
     ci1_arr = np.clip((sum_var - var_ws) / sum_var, -1.0, 1.0)
     np.nan_to_num(ci1_arr, copy=False, nan=0.0)
 
-    # CI2'
+    # CI2 = C_nl in the paper.
     ci2_prime_arr = np.clip((var_l - var_lws) / (var_l + 1e-6), -1.0, 1.0)
     np.nan_to_num(ci2_prime_arr, copy=False, nan=0.0)
 
-    # C3: Kendall's Tau
+    # C3_kendall = C_tau: Kendall's Tau
     provinces = clean_df['Wind'].columns
     num_provinces = len(provinces)
     c3_kendall_arr = np.zeros(num_provinces, dtype=np.float32)
@@ -52,7 +52,7 @@ def _compute_monthly_CI(calculator: PowerGapCalculator, year: int, month: int,
             tau, _ = kendalltau(ws_series, load_series)
             c3_kendall_arr[idx] = tau if not np.isnan(tau) else 0.0
 
-    # C4: CV
+    # C4_CV = C_CV: coefficient of variation
     mean_ws = np.nanmean(wind_solar_sum, axis=0)
     std_ws = np.nanstd(wind_solar_sum, axis=0)
     c4_cv_arr = np.clip(std_ws / (mean_ws + 1e-6), 0.0, 2.0)

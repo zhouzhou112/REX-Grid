@@ -64,7 +64,8 @@ def apply_actions_to_decision_points(df: pd.DataFrame, action_array: np.ndarray)
 if __name__ == '__main__':
     # 示例用法
     # 请确保路径与你 config 中的一致
-    excel_file = r"D:\paper2\data\resourcepoint\05已安装风光数据链接\RL_STATE_2020.xlsx"
+    from config.paths import input_path
+    excel_file = input_path("decision_points")
 
     try:
         df = read_decision_points(excel_file)

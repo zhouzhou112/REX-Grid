@@ -11,3 +11,5 @@ __pycache__/
 # 忽略强化学习训练产生的庞大日志和模型检查点 (可选，视你的需求而定)
 logs/
 *.zip
+outputs/
+data/optional/

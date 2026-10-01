@@ -2,6 +2,7 @@ import pandas as pd
 import time
 from pathlib import Path
 import xarray as xr
+from config.paths import input_path
 # --- 假设下列函数均已定义或从其他模块导入 ---
 from REX.load_curve import ProvinceLoadManager
 from REX.wind_solar_generate import generate_seven_days_wind_solar
@@ -14,20 +15,14 @@ from REX.power_generate_othersource import calculate_hydro_output, calculate_nuc
 # 1. 集中配置区域 (建议后续开源时独立为 config.py)
 # ==========================================
 class Config:
-    # 基础路径（开源时可在 README 提示用户修改此处）
-    DATA_BASE_DIR = Path("D:/paper2/data")
-    WORK_BASE_DIR = Path("D:/Work/海南负荷预测项目——饶宏/25-08任务分工/工程院项目课题一收资数据")
-
-    # 负荷与气象路径
-    LOAD_FOLDER = DATA_BASE_DIR / "负荷曲线/负载归一24"
-    WIND_NC_PATH = DATA_BASE_DIR / "windspeed_M/windspeed_100m.nc"
-    SOLAR_NC_PATH = DATA_BASE_DIR / "Solar_M/SOLARRAD_T2M_2013_2023.nc"
-
-    # 水电、核电与装机参数路径
-    HYDRO_CF_CSV = DATA_BASE_DIR / "Power_generate/Hydro-cf.csv"
-    INSTALLED_CAP_CSV = DATA_BASE_DIR / "Power_generate/Generate_installed_2020.csv"
-    HYDRO_COEFF_XLSX = DATA_BASE_DIR / "Power_generate/水电、核电扩张/hydro_factor.xlsx"
-    NUCLEAR_COEFF_XLSX = DATA_BASE_DIR / "Power_generate/水电、核电扩张/nuclear_factor.xlsx"
+    # Input paths are configured relative to the repository root.
+    LOAD_FOLDER = input_path("load_folder")
+    WIND_NC_PATH = input_path("wind_nc")
+    SOLAR_NC_PATH = input_path("solar_nc")
+    HYDRO_CF_CSV = input_path("hydro_cf")
+    INSTALLED_CAP_CSV = input_path("installed_cap")
+    HYDRO_COEFF_XLSX = input_path("hydro_coeff")
+    NUCLEAR_COEFF_XLSX = input_path("nuclear_coeff")
 
     # 省份定义
     PROVINCE_CODES = pd.DataFrame({
@@ -147,8 +142,18 @@ class PowerGapCalculator:
 # ==========================================
 # ★ 全局单例与接口暴露 ★
 # ==========================================
-# 1. 在模块被首次导入时，实例化一次计算器（此时预加载所有 NetCDF 数据）
-_global_calculator = PowerGapCalculator()
+# Load external weather on first use; importing the package needs no data files.
+class _LazyCalculator:
+    def __init__(self):
+        self._instance = None
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            self._instance = PowerGapCalculator()
+        return getattr(self._instance, name)
+
+
+_global_calculator = _LazyCalculator()
 
 
 # 2. 暴露一个与旧版同名的独立函数，供外部脚本直接 import 和调用

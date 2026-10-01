@@ -1,14 +1,12 @@
 from pathlib import Path
 import pandas as pd
+from config.paths import input_path
 
 SOUTH_IDS = [44, 45, 46, 52, 53]
 
-PROV_DIR_MAP_greedy = {p: rf"D:\codeenv\pycharmproject\RL_agent\RL_main\expansion\greedy\{p}\history" for p in
-                       ["GD", "GX", "HN", "YN", "GZ"]}
-PROV_DIR_MAP_rl = {p: rf"D:\codeenv\pycharmproject\RL_agent\RL_main\expansion\RL\{p}" for p in
-                   ["GD", "GX", "HN", "YN", "GZ"]}
-PROV_DIR_MAP_lcoe = {p: rf"D:\codeenv\pycharmproject\RL_agent\RL_main\expansion\LCOE\{p}" for p in
-                     ["GD", "GX", "HN", "YN", "GZ"]}
+PROV_DIR_MAP_greedy = {p: input_path("expansion_greedy") / p / "history" for p in ["GD", "GX", "HN", "YN", "GZ"]}
+PROV_DIR_MAP_rl = {p: input_path("expansion_rl") / p for p in ["GD", "GX", "HN", "YN", "GZ"]}
+PROV_DIR_MAP_lcoe = {p: input_path("expansion_lcoe") / p for p in ["GD", "GX", "HN", "YN", "GZ"]}
 
 UPDATE_COLS = ["Installed_onshorewind", "Installed_offshorewind", "Installed_pv", "Potential_onshorewind",
                "Potential_offshorewind", "Potential_pv"]

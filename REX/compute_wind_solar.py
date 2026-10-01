@@ -23,7 +23,6 @@ def compute_wind_solar(year: int, month: int, decision_points: pd.DataFrame):
 if __name__ == "__main__":
     pass
     # 测试文件路径
-    # test_excel = "D:/paper2/data/resourcepoint/05已安装风光数据链接/test0723.xlsx"
     # decision_points = pd.read_excel(test_excel)
 
     # print(f"正在计算测试数据的风光出力...")

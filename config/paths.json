@@ -1,0 +1,21 @@
+{
+  "thermal_csv": "data/全国分级火电分布.csv",
+  "storage_xlsx": "data/energy_story_2020.xlsx",
+  "transmission_csv": "data/exist_trasmission.csv",
+  "decision_points": "data/RL_STATE_2020.xlsx",
+  "retirement_xlsx": "data/retirement_capacity_bins.xlsx",
+  "city_centers": "data/city-center-0816.xls",
+  "city_network": "Grid/city_network-0816",
+  "output_dir": "outputs",
+  "expansion_rl": "data/expansion/RL",
+  "expansion_greedy": "data/expansion/Greedy",
+  "expansion_lcoe": "data/expansion/LCOE",
+  "load_folder": "data/负载归一24",
+  "wind_nc": "data/weather/windspeed_100m.nc",
+  "solar_nc": "data/weather/SOLARRAD_T2M_2013_2023.nc",
+  "hydro_cf": "data/Hydro-cf.csv",
+  "installed_cap": "data/Generate_installed_2020.csv",
+  "hydro_coeff": "data/hydro_factor.xlsx",
+  "nuclear_coeff": "data/nuclear_factor.xlsx",
+  "baseline_comparison_portfolio": "data/optional/comparison_portfolio.xlsx"
+}

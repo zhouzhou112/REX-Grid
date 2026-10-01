@@ -98,6 +98,7 @@ SPIN_ALPHA = 0.05
 SPIN_BETA = 0.3
 CYCLE_LIMIT = 1000
 RES_MARGIN = 0.15
+CO2_SLACK_PENALTY_USD_PER_T = 100
 R_EARTH = 6371.0
 
 
@@ -132,7 +133,8 @@ def cref_hvac_500kv(distance_km: float) -> float:
 
 def load_existing_lines(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
-    df = df[df["status"].isin(["Operating", "Construct"])]
+    # Only 'Operating' records enter the base-year capacity; the 'Construction' records (Kunliulong) are not included. See PROVENANCE.md, Known issue 2.
+    df = df[df["status"].isin(["Operating", "Construct"]) ]
     rec = []
     for _, r in df.iterrows():
         a, b = sorted((int(r["from"]), int(r["to"])))
@@ -339,6 +341,8 @@ class AnnualDispatchOptimizer:
         self.m = gp.Model(f"dispatch_{current_year}")
         self.m.Params.OutputFlag = 0
         self.m.Params.Method = 2
+        self.m.Params.Crossover = 0
+        self.m.Params.Presolve = 2
         self.m.Params.Threads = threads
         self.m.Params.FeasibilityTol = 1e-2
         self.m.Params.NumericFocus = 1
@@ -433,7 +437,8 @@ class AnnualDispatchOptimizer:
 
             cap_MW = self.cap_corr[j] * 1000
             line_capex_kUSD = TECH_INFO[tech]["capex"] * 1000 * dist * (cap_MW / cref)
-            sub_capex_both_kUSD = TECH_INFO[tech]["substation"] * 1000 * cap_MW * 2
+            # Kept as in the runs reported in the paper (thousand-USD slip); see PROVENANCE.md, Known issue 1.
+            sub_capex_both_kUSD = TECH_INFO[tech]["substation"] * cap_MW * 2
             self.cost_terms["line_fix_OM"] += (
                                                           FOM_LINE_RATE * line_capex_kUSD + FOM_SUB_RATE * sub_capex_both_kUSD) * year_scale
 
@@ -462,15 +467,15 @@ class AnnualDispatchOptimizer:
                 Σ_ccs = sum(self.ccs_cap_vintage[u][pb][i] for pb in self.pbs) + gp.quicksum(
                     self.add_ccs[u, pbi, i] for pbi in range(self.n_pb))
                 ret_ccs_tot = self.m.addVar(lb=0.0, name=f"retCC_tot_{u}_{i}")
-                self.m.addConstr(ret_ccs_tot <= Σ_ccs)
+                self.m.addConstr(ret_ccs_tot <= Σ_ccs, name=f'ub_retCC_tot_{u}_{i}')
 
                 Sigma_ccs = Σ_ccs - ret_ccs_tot
-                self.m.addConstr(Sigma_ccs <= base_cap)
+                self.m.addConstr(Sigma_ccs <= base_cap, name=f'cap_CC_total_{u}_{i}')
 
                 for t in range(self.T):
                     self.m.addConstr(self.comm_noCC[u][t, i] + self.comm_CC[u][t, i] == self.on[u][t, i])
-                    self.m.addConstr(self.comm_CC[u][t, i] <= Sigma_ccs)
-                    self.m.addConstr(self.comm_noCC[u][t, i] <= base_cap - Sigma_ccs)
+                    self.m.addConstr(self.comm_CC[u][t, i] <= Sigma_ccs, name=f'commCC_cap_{u}_{i}_{t}')
+                    self.m.addConstr(self.comm_noCC[u][t, i] <= base_cap - Sigma_ccs, name=f'commNoCC_cap_{u}_{i}_{t}')
 
                     if t == 0:
                         self.m.addConstr(self.on[u][t, i] == self.start[u][t, i] - self.stop[u][t, i])
@@ -505,13 +510,15 @@ class AnnualDispatchOptimizer:
             expr = gp.quicksum(THERMAL_PARAMS[u]["CO2_emission"] / 1000 * (
                         self.dp_noCC[u][t, i] + (1 - CAPTURE_RATE) * self.dp_CC[u][t, i]) for u in THERMAL_PARAMS for t
                                in range(self.T))
-            self.m.addConstr(self.E_annual[i] == expr)
+            self.m.addConstr(self.E_annual[i] == expr, name=f'def_CO2_{prov}')
             self.m.addConstr(
-                self.E_annual[i] <= carbon_cap_t_sample(self.current_year, prov, self.T) + self.co2_slack[i])
+                self.E_annual[i] <= carbon_cap_t_sample(self.current_year, prov, self.T) + self.co2_slack[i], name=f'cap_CO2_{prov}')
 
         self.stor, self.soc, self.stor_abs, self.P_chg, self.P_dis = {}, {}, {}, {}, {}
         for tech, p in STORAGE_TECHS.items():
             self.stor[tech] = self.m.addVars(self.T, self.n_prov, lb=-GRB.INFINITY, name=f"stor_{tech}")
+            # Retained to match the variables in the reported production model.
+            self.stor_abs[tech] = self.m.addVars(self.T, self.n_prov, lb=0, name=f"absstor_{tech}")
             self.soc[tech] = self.m.addVars(self.T + 1, self.n_prov, lb=0, name=f"soc_{tech}")
             self.P_chg[tech] = self.m.addVars(self.T, self.n_prov, lb=0, name=f"Pchg_{tech}")
             self.P_dis[tech] = self.m.addVars(self.T, self.n_prov, lb=0, name=f"Pdis_{tech}")
@@ -525,18 +532,18 @@ class AnnualDispatchOptimizer:
                 cap_e = STO_DURATION[tech] * cap_p
 
                 for t in range(self.T):
-                    self.m.addConstr(self.P_chg[tech][t, i] <= cap_p)
-                    self.m.addConstr(self.P_dis[tech][t, i] <= cap_p)
-                    self.m.addConstr(η_c * self.P_chg[tech][t, i] + self.P_dis[tech][t, i] / η_d <= cap_p)
-                    self.m.addConstr(self.stor[tech][t, i] == self.P_dis[tech][t, i] - self.P_chg[tech][t, i])
+                    self.m.addConstr(self.P_chg[tech][t, i] <= cap_p, name=f'PchgCap_{tech}_{t}_{i}')
+                    self.m.addConstr(self.P_dis[tech][t, i] <= cap_p, name=f'PdisCap_{tech}_{t}_{i}')
+                    self.m.addConstr(η_c * self.P_chg[tech][t, i] + self.P_dis[tech][t, i] / η_d <= cap_p, name=f'PdisCap_{tech}_{t}_{i}')
+                    self.m.addConstr(self.stor[tech][t, i] == self.P_dis[tech][t, i] - self.P_chg[tech][t, i], name=f'PnetDef_{tech}_{t}_{i}')
                     self.m.addConstr(
                         self.soc[tech][t + 1, i] == (1 - λ_hr) * self.soc[tech][t, i] + η_c * self.P_chg[tech][t, i] -
-                        self.P_dis[tech][t, i] / η_d)
+                        self.P_dis[tech][t, i] / η_d, name=f'SOC_{tech}_{t}_{i}')
 
                 for t in range(1, self.T + 1):
-                    self.m.addConstr(self.soc[tech][t, i] <= cap_e)
-                self.m.addConstr(self.soc[tech][0, i] == self.soc[tech][self.T, i])
-                self.m.addConstr(gp.quicksum(self.P_dis[tech][t, i] for t in range(self.T)) <= CYCLE_LIMIT * cap_p)
+                    self.m.addConstr(self.soc[tech][t, i] <= cap_e, name=f'SOCMax_{tech}_{t}_{i}')
+                self.m.addConstr(self.soc[tech][0, i] == self.soc[tech][self.T, i], name=f'SOC_cyclic_{tech}_{i}')
+                self.m.addConstr(gp.quicksum(self.P_dis[tech][t, i] for t in range(self.T)) <= CYCLE_LIMIT * cap_p, name=f'cycleLim_{tech}_{i}')
 
         self.F_fwd = self.m.addVars(self.T, self.n_corr, lb=0, name="Ffwd")
         self.F_rev = self.m.addVars(self.T, self.n_corr, lb=0, name="Frev")
@@ -545,7 +552,7 @@ class AnnualDispatchOptimizer:
         for j in range(self.n_corr):
             inv_eff = 1.0 / self.loss_fac[j]
             for t in range(self.T):
-                self.m.addConstr(self.F_fwd[t, j] + self.F_rev[t, j] * inv_eff <= self.cap_corr[j])
+                self.m.addConstr(self.F_fwd[t, j] + self.F_rev[t, j] * inv_eff <= self.cap_corr[j], name=f'cap_{t}_{j}')
 
         self.res_sto = self.m.addVars(self.T, self.n_prov, lb=0, name="Res_STO")
         self.res_th = self.m.addVars(self.T, self.n_prov, lb=0, name="Res_TH")
@@ -571,28 +578,40 @@ class AnnualDispatchOptimizer:
                     elif i == s:
                         net_trans += 1000 * (self.F_fwd[t, j] - self.F_rev[t, j] / η)
 
-                self.m.addConstr(dp_eff_sum + stor_sum + net_trans == self.gap_df[t, i] + self.curtail[t, i])
-                self.m.addConstr(self.curtail[t, i] <= clean_arr[t, i])
+                self.m.addConstr(dp_eff_sum + stor_sum + net_trans == self.gap_df[t, i] + self.curtail[t, i], name=f'balance_{t}_{i}')
+                cap_th = gp.quicksum(
+                    THERMAL_PARAMS[u]["pmax"] * (
+                        gp.quicksum(self.thermal_cap_vintage[u][pb][i] for pb in self.pbs)
+                        - gp.quicksum(self.ret_th[u, pbi, i] for pbi in range(self.n_pb))
+                        + self.new_th[u, i])
+                    for u in THERMAL_PARAMS)
+                cap_sto = gp.quicksum(
+                    self.storage_cap_p_base[tech][i] + self.add_sto_p[tech, i]
+                    for tech in STORAGE_TECHS)
+                self.m.addConstr(
+                    cap_th + cap_sto + net_trans >= (1 + RES_MARGIN) * self.gap_df[t, i],
+                    name=f"reserveCap_{t}_{i}")  # SI Eq. (pste_adequacy)
+                self.m.addConstr(self.curtail[t, i] <= clean_arr[t, i], name=f'curtub_{t}_{i}')
 
                 headroom_th = gp.quicksum(THERMAL_PARAMS[u]["pmax"] * self.on[u][t, i] - (self.dp_noCC[u][t, i] + (
                             1 - ccs_energy_penalty("Coal" if u.startswith("Coal") else "GAS", self.current_year)) *
                                                                                           self.dp_CC[u][t, i]) for u in
                                           THERMAL_PARAMS)
-                self.m.addConstr(self.res_th[t, i] <= headroom_th)
+                self.m.addConstr(self.res_th[t, i] <= headroom_th, name=f'resThCap_{t}_{i}')
 
                 for tech in STORAGE_TECHS:
                     self.m.addConstr(
                         self.res_sto_tech[tech][t, i] <= self.storage_cap_p_base[tech][i] + self.add_sto_p[tech, i] -
-                        self.P_dis[tech][t, i])
-                    self.m.addConstr(self.res_sto_tech[tech][t, i] <= self.soc[tech][t, i])
+                        self.P_dis[tech][t, i], name=f'resStoP_{tech}_{t}_{i}')
+                    self.m.addConstr(self.res_sto_tech[tech][t, i] <= self.soc[tech][t, i], name=f'resStoSOC_{tech}_{t}_{i}')
 
                 self.m.addConstr(
-                    self.res_sto[t, i] == gp.quicksum(self.res_sto_tech[tech][t, i] for tech in STORAGE_TECHS))
+                    self.res_sto[t, i] == gp.quicksum(self.res_sto_tech[tech][t, i] for tech in STORAGE_TECHS), name=f'resStoSum_{t}_{i}')
                 self.m.addConstr(self.res_tot[t, i] == self.res_th[t, i] + self.res_sto[t, i])
 
                 req = SPIN_ALPHA * self.load_df.iloc[t, i] + SPIN_BETA * (
                             self.clean_power_df["Wind"].iloc[t, i] + self.clean_power_df["Solar"].iloc[t, i])
-                self.m.addConstr(self.res_tot[t, i] >= req)
+                self.m.addConstr(self.res_tot[t, i] >= req, name=f'reserveReq_{t}_{i}')
 
     def _build_objective(self):
         self.cost_terms["start"] += gp.quicksum(
@@ -620,7 +639,7 @@ class AnnualDispatchOptimizer:
         self.cost_terms["storage_var_om"] += gp.quicksum(
             STORAGE_TECHS[tech]["var_om"] * self.P_dis[tech][t, i] for tech in STORAGE_TECHS for t in range(self.T) for
             i in range(self.n_prov)) * OM
-        self.cost_terms["Co2"] = 100 * gp.quicksum(self.co2_slack[i] for i in range(self.n_prov)) * OM
+        self.cost_terms["Co2"] = CO2_SLACK_PENALTY_USD_PER_T * gp.quicksum(self.co2_slack[i] for i in range(self.n_prov)) * OM
 
         total = sum(self.cost_terms[k] for k in ["fuel", "co2_chain", "storage_var_om", "start", "Co2"]) + self.inv_cost
         self.m.setObjective(total, GRB.MINIMIZE)
@@ -628,7 +647,7 @@ class AnnualDispatchOptimizer:
 
     def optimize(self):
         self.m.optimize()
-        if self.m.Status == GRB.OPTIMAL: print(f"[{self.current_year}] optimal cost = {self.m.ObjVal:,.0f} k RMB")
+        if self.m.Status == GRB.OPTIMAL: print(f"[{self.current_year}] optimal cost = {self.m.ObjVal:,.0f} USD (2020)")
         return self.m.Status
 
     def get_cost_breakdown(self) -> dict[str, float]:

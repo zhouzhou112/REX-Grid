@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "Please cite the associated Energy manuscript, currently under revision."
+title: "REX-Grid: Reinforcement learning for renewable expansion with grid-consistent system evaluation"
+type: software
+version: 1.1.0
+date-released: 2026-10-01
+license: MIT
+repository-code: "https://github.com/zhouzhou112/REX-Grid"
+authors:
+  - family-names: Zhou
+    given-names: Zhou
+  - family-names: Cai
+    given-names: Guotian
+  - family-names: Chen
+    given-names: Yushu
+  - family-names: Nie
+    given-names: Shuai
+  - family-names: Du
+    given-names: Wenjie
+  - family-names: He
+    given-names: Gang
+preferred-citation:
+  type: article
+  title: "Load-aligned renewable siting reduces net-load stress and downstream flexibility needs"
+  journal: Energy
+  year: 2026
+  notes: "Manuscript EGY-D-26-10722; under revision."
+  authors:
+    - family-names: Zhou
+      given-names: Zhou
+    - family-names: Cai
+      given-names: Guotian
+    - family-names: Chen
+      given-names: Yushu
+    - family-names: Nie
+      given-names: Shuai
+    - family-names: Du
+      given-names: Wenjie
+    - family-names: He
+      given-names: Gang

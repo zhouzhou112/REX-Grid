@@ -1,0 +1,33 @@
+{
+  "n_envs": 32,
+  "n_steps": 64,
+  "batch_size": 256,
+  "n_epochs": 10,
+  "gamma": 0.995,
+  "gae_lambda": 0.95,
+  "learning_rate": [
+    5e-05,
+    1e-06
+  ],
+  "clip_range": [
+    0.08,
+    0.02
+  ],
+  "target_kl": 0.03,
+  "ent_coef": 0.002,
+  "entropy_schedule": "scaled_with_learning_rate",
+  "policy_layers": [
+    1024,
+    512,
+    256
+  ],
+  "value_layers": [
+    768,
+    512,
+    256
+  ],
+  "vf_coef": 0.4,
+  "total_timesteps": 2500000,
+  "start_year": 2020,
+  "terminal_year": 2050
+}
