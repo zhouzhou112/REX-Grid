@@ -6,7 +6,7 @@ This repository contains the code and model inputs used in:
 
 > Zhou Z, Cai G, Chen Y, Nie S, Du W, He G. *Load-aligned renewable siting reduces net-load stress and downstream flexibility needs.* Energy (manuscript EGY-D-26-10722, under revision).
 
-Release `v1.1.0` corresponds to the revised manuscript. The scientific description of the model, its assumptions and all parameter values are given in the paper and its Supplementary Information (SI); this README explains how the code maps onto that description.
+Release `v1.2.0` corresponds to the revised manuscript. The scientific description of the model, its assumptions and all parameter values are given in the paper and its Supplementary Information (SI); this README explains how the code maps onto that description.
 
 ---
 
@@ -115,9 +115,9 @@ Representative days are selected for each run, so repeated runs can differ sligh
 
 ---
 
-## 6. Revision experiments
+## 6. Other scripts
 
-Code for the revision experiments is available from the authors on request.
+Baseline construction scripts and the code for the sensitivity and benchmark experiments are available from the authors on request.
 
 ---
 
